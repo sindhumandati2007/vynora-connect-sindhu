@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, MapPin, Users, Clock, ShieldCheck, Tag } from 'lucide-react';
 import EventStatusBadge from '../components/events/EventStatusBadge';
 import EventRegistration from '../components/events/EventRegistration';
-import { eventsService } from '../services/eventsService';
+import { clubsEventsApi } from '../services/clubsEventsApi';
 
 export default function EventDetails() {
   const { id } = useParams();
@@ -15,8 +15,10 @@ export default function EventDetails() {
     setLoading(true);
     setError(null);
     try {
-      const data = await eventsService.getEventById(id);
-      setEvent(data);
+      const res = await clubsEventsApi.getEvents();
+      const found = res.data.find((e) => e.id === id);
+      if (!found) throw new Error('Event not found.');
+      setEvent(found);
     } catch (err) {
       setError(err.message || 'Event not found.');
     } finally {
@@ -29,142 +31,85 @@ export default function EventDetails() {
   }, [id]);
 
   if (loading) {
-    return (
-      <div style={{ maxWidth: '900px', margin: '40px auto', padding: '0 20px', color: 'var(--text-secondary)' }}>
-        Loading event details...
-      </div>
-    );
+    return <div style={{ maxWidth: '900px', margin: '40px auto', padding: '0 20px', color: 'var(--text-secondary)' }}>Loading event details...</div>;
   }
 
   if (error || !event) {
     return (
       <div style={{ maxWidth: '900px', margin: '40px auto', padding: '0 20px' }}>
-        <Link to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--accent)', fontSize: '14px', marginBottom: '16px' }}>
-          <ArrowLeft size={16} /> Back to Events
-        </Link>
-        <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '32px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>Event Not Found</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>{error || 'This event does not exist or has been removed.'}</p>
+        <Link to="/events" style={{ color: 'var(--accent)', fontSize: '14px' }}>← Back to Events</Link>
+        <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '32px', marginTop: '16px' }}>
+          <h2>Event Not Found</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>{error}</p>
         </div>
       </div>
     );
   }
 
-  const startDate = new Date(event.startAt).toLocaleString('en-US', {
-    dateStyle: 'full',
-    timeStyle: 'short'
-  });
-  const endDate = new Date(event.endAt).toLocaleString('en-US', {
-    dateStyle: 'full',
-    timeStyle: 'short'
-  });
-  const deadline = new Date(event.registrationDeadline).toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short'
-  });
-
-  const percentageFilled = Math.min(100, Math.round((event.registeredCount / event.capacity) * 100));
+  const startDate = new Date(event.startsAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' });
+  const endDate = new Date(event.endsAt).toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' });
+  const deadline = new Date(event.registrationClosesAt || event.registrationDeadline).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  const percentageFilled = Math.min(100, Math.round(((event.registeredCount || 0) / (event.capacity || 100)) * 100));
 
   return (
     <div style={{ maxWidth: '960px', margin: '0 auto', padding: '32px 20px' }}>
-      {/* Back button */}
-      <Link
-        to="/events"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          color: 'var(--text-secondary)',
-          fontSize: '13px',
-          fontWeight: 600,
-          marginBottom: '24px'
-        }}
-      >
+      <Link to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, marginBottom: '24px' }}>
         <ArrowLeft size={16} /> Back to all events
       </Link>
 
-      {/* Main Container */}
-      <div
-        style={{
-          backgroundColor: 'var(--bg-card)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '16px',
-          padding: '32px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '28px'
-        }}
-      >
-        {/* Header Section */}
+      <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '32px', display: 'flex', flexDirection: 'column', gap: '28px' }}>
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span
-              style={{
-                fontSize: '12px',
-                fontWeight: 600,
-                color: 'var(--accent)',
-                backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                padding: '4px 10px',
-                borderRadius: '6px'
-              }}
-            >
-              {event.category}
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '4px 10px', borderRadius: '6px' }}>
+              {event.category.toUpperCase()}
             </span>
-            <EventStatusBadge status={event.status} isOnline={event.isOnline} />
+            <EventStatusBadge status={event.status === 'published' ? 'UPCOMING' : event.status} isOnline={event.mode === 'online'} />
           </div>
 
-          <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
-            {event.title}
-          </h1>
-
+          <h1 style={{ fontSize: '28px', fontWeight: 800, marginBottom: '8px' }}>{event.title}</h1>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            Organized by <strong style={{ color: '#FFFFFF' }}>{event.organizer}</strong>
+            Organized by <strong style={{ color: '#FFFFFF' }}>{event.clubName || event.organizer}</strong>
           </p>
         </div>
 
-        {/* 2-Column Info Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-          {/* Left Column: Details */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Start and End Times */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <Calendar size={18} color="var(--accent)" style={{ marginTop: '2px' }} />
+              <Calendar size={18} color="var(--accent)" />
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Start Date & Time</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>Start Date & Time</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{startDate}</div>
-                <div style={{ fontSize: '12px', color: '#737373', marginTop: '2px' }}>Ends: {endDate}</div>
+                <div style={{ fontSize: '12px', color: '#737373' }}>Ends: {endDate}</div>
               </div>
             </div>
 
-            {/* Location / Meeting */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <MapPin size={18} color="var(--accent)" style={{ marginTop: '2px' }} />
+              <MapPin size={18} color="var(--accent)" />
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Location</div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{event.location}</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>Venue</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  {event.venue ? (typeof event.venue === 'string' ? event.venue : `${event.venue.name}, ${event.venue.city}`) : 'Online Room'}
+                </div>
               </div>
             </div>
 
-            {/* Deadline */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <Clock size={18} color="var(--accent)" style={{ marginTop: '2px' }} />
+              <Clock size={18} color="var(--accent)" />
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Registration Deadline</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>Registration Deadline</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{deadline}</div>
               </div>
             </div>
 
-            {/* Eligibility */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-              <ShieldCheck size={18} color="var(--accent)" style={{ marginTop: '2px' }} />
+              <ShieldCheck size={18} color="var(--accent)" />
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Eligibility</div>
+                <div style={{ fontSize: '13px', fontWeight: 600 }}>Eligibility</div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{event.eligibility}</div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Registration Card + Capacity Progress */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             <EventRegistration
               event={event}
@@ -172,62 +117,31 @@ export default function EventDetails() {
                 setEvent((prev) => ({
                   ...prev,
                   isUserRegistered: isRegistered,
-                  registeredCount: isRegistered ? prev.registeredCount + 1 : prev.registeredCount - 1
+                  registeredCount: isRegistered ? (prev.registeredCount || 0) + 1 : Math.max(0, (prev.registeredCount || 0) - 1)
                 }));
               }}
             />
 
-            {/* Capacity Meter */}
             <div style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
                 <span style={{ color: 'var(--text-secondary)' }}>Capacity Filled</span>
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {event.registeredCount} / {event.capacity} seats ({percentageFilled}%)
+                <span style={{ fontWeight: 600 }}>
+                  {event.registeredCount || 0} / {event.capacity} seats ({percentageFilled}%)
                 </span>
               </div>
               <div style={{ height: '8px', backgroundColor: '#262626', borderRadius: '4px', overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${percentageFilled}%`,
-                    backgroundColor: percentageFilled >= 100 ? '#EF4444' : 'var(--accent)',
-                    transition: 'width 0.3s ease'
-                  }}
-                />
+                <div style={{ height: '100%', width: `${percentageFilled}%`, backgroundColor: percentageFilled >= 100 ? '#EF4444' : 'var(--accent)' }} />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Description Section */}
         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
           <h3 style={{ fontSize: '17px', fontWeight: 700, marginBottom: '12px' }}>About this Event</h3>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
             {event.description}
           </p>
         </div>
-
-        {/* Tags */}
-        {event.tags && event.tags.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <Tag size={15} color="#737373" />
-            {event.tags.map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  fontSize: '12px',
-                  backgroundColor: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-color)',
-                  color: 'var(--text-secondary)',
-                  padding: '4px 10px',
-                  borderRadius: '6px'
-                }}
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
